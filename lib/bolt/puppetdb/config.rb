@@ -108,6 +108,13 @@ module Bolt
         @uri
       end
 
+      def krb
+        if @settings['krb']
+          @settings['krb']
+        end
+      end
+
+
       def cacert
         if @settings['cacert'] && validate_file_exists('cacert')
           @settings['cacert']

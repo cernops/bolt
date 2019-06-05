@@ -59,8 +59,40 @@ module Bolt
       end
 
       def make_query(query, path = nil)
+       if @config.krb
+        make_query_krb(query, path = nil)
+       else
+         make_query_ssl(query, path = nil)
+       end
+      end
+
+      def make_query_krb(query, path = nil)
         body = JSON.generate(query: query)
         url = "#{uri}/pdb/query/v4"
+        url += "/#{path}" if path
+        begin
+          request = http_client_krb
+          request.url = url
+          request.body = body
+          request.headers['Content-Type'] = 'application/json'
+          response = HTTPI.post(request, adapter = :curb)
+        rescue StandardError => err
+          raise Bolt::PuppetDBError, "Failed to query PuppetDB: #{err}"
+        end
+        if response.code != 200
+          raise Bolt::PuppetDBError, "Failed to query PuppetDB: #{response.body}"
+        end
+        begin
+          JSON.parse(response.body)
+        rescue JSON::ParserError
+          raise Bolt::PuppetDBError, "Unable to parse response as JSON: #{response.body}"
+        end
+      end
+
+
+      def make_query_ssl(query, path = nil)
+        body = JSON.generate(query: query)
+        url = "#{@config.uri}/pdb/query/v4"
         url += "/#{path}" if path
 
         begin
@@ -115,6 +147,20 @@ module Bolt
         uri = URI.parse(@current_url)
         uri.port ||= 8081
         uri
+      end
+
+      def http_client_krb
+        require 'rubygems'
+        require 'httpi'
+        require 'curb'
+        return @http if @http
+        @http = HTTPI::Request.new()
+        @http.auth.ssl.verify_mode = :none
+        @http.auth.gssnegotiate
+        HTTPI.log = false
+        HTTPI.adapter = :curb
+
+        @http
       end
 
       def headers
